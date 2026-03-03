@@ -1,0 +1,54 @@
+{
+  "name": "pazzle",
+  "displayName": "Pazzle Language Support",
+  "description": "Official syntax highlighting and language support for Pazzle (.pazzle) files.",
+  "version": "1.0.1",
+  "engines": {
+    "vscode": "^1.108.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "bin": {
+    "pazzle": "parser.js"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "pazzle",
+        "aliases": [
+          "Pazzle",
+          "pazzle"
+        ],
+        "extensions": [
+          ".pazzle"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pazzle",
+        "scopeName": "source.pazzle",
+        "path": "./syntaxes/pazzle.tmLanguage.json"
+      }
+    ]
+  },
+"scripts": {
+  "pazzle": "node parser.js",
+  "compile": "tsc -p ./",
+  "watch": "tsc -watch -p ./"
+},
+  "devDependencies": {
+    "@types/vscode": "^1.108.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.54.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}

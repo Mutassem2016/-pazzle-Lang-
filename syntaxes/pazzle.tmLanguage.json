@@ -1,0 +1,250 @@
+{
+  "scopeName": "source.pazzle",
+  "name": "Pazzle",
+  "patterns": [
+
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+
+    {
+      "include": "#variable-declaration"
+    },
+    {
+      "include": "#constant-declaration"
+    },
+    {
+      "include": "#function-definition"
+    },
+    {
+      "include": "#function-call"
+    },
+    {
+      "include": "#print"
+    },
+    {
+      "include": "#variable-editor"
+    },
+    {
+      "include": "#conditionals"
+    },
+    {
+      "include": "#loops"
+    },
+    {
+      "include": "#match"
+    },
+    {
+      "include": "#regex"
+    },
+    {
+      "include": "#filesystem"
+    },
+    {
+      "include": "#dom"
+    },
+    {
+      "include": "#run"
+    },
+
+    {
+      "include": "#keywords"
+    }
+
+  ],
+
+  "repository": {
+
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.pazzle",
+          "match": "#.*$"
+        }
+      ]
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.pazzle",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.single.pazzle",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    },
+
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.pazzle",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.pazzle",
+          "match": "\\b(if|else|for|from|to|step|match|run|fs)\\b"
+        }
+      ]
+    },
+
+    "variable-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(make)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.variable.pazzle" },
+            "2": { "name": "variable.other.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "constant-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(stop)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.constant.pazzle" },
+            "2": { "name": "variable.other.constant.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "function-definition": {
+      "patterns": [
+        {
+          "match": "\\b(catch)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.function.pazzle" },
+            "2": { "name": "entity.name.function.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "function-call": {
+      "patterns": [
+        {
+          "match": "\\b(call)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.control.call.pazzle" },
+            "2": { "name": "entity.name.function.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "print": {
+      "patterns": [
+        {
+          "name": "support.function.print.pazzle",
+          "match": "local\\.My's\\.web\\.txtar"
+        }
+      ]
+    },
+
+    "variable-editor": {
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_]\\w*)\\s*:\\s*(add|subtract|multiply|divide|mod|power|set|toggle|increment|decrement|To|From|ToHTML|FromHTML|ToValue|FromValue|style|IfEmpty|SetMax|SetMin|take)(?=\\s|\\(|$)",
+          "captures": {
+            "1": { "name": "variable.other.pazzle" },
+            "2": { "name": "keyword.operator.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "conditionals": {
+      "patterns": [
+        {
+          "name": "keyword.control.conditional.pazzle",
+          "match": "\\b(if|else)\\b"
+        }
+      ]
+    },
+
+    "loops": {
+      "patterns": [
+        {
+          "name": "keyword.control.loop.pazzle",
+          "match": "loop_to\\.end\\.time"
+        },
+        {
+          "match": "\\bfor\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "0": { "name": "keyword.control.loop.pazzle" },
+            "1": { "name": "variable.other.loop.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "match": {
+      "patterns": [
+        {
+          "name": "keyword.control.match.pazzle",
+          "match": "\\bmatch\\b"
+        },
+        {
+          "name": "constant.language.case.pazzle",
+          "match": "\".*?\"(?=\\s*\\{)"
+        }
+      ]
+    },
+
+    "regex": {
+      "patterns": [
+        {
+          "name": "keyword.operator.regex.pazzle",
+          "match": "\\bRE\\("
+        }
+      ]
+    },
+
+    "filesystem": {
+      "patterns": [
+        {
+          "name": "support.function.fs.pazzle",
+          "match": "\\b(read|write)\\s*\\("
+        }
+      ]
+    },
+
+    "dom": {
+      "patterns": [
+        {
+          "name": "support.type.dom.pazzle",
+          "match": "local\\.Make|local\\.web|front-end|loop_to\\.find"
+        }
+      ]
+    },
+
+    "run": {
+      "patterns": [
+        {
+          "name": "keyword.control.run.pazzle",
+          "match": "\\brun\\b"
+        }
+      ]
+    }
+
+  }
+}
