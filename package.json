@@ -12,7 +12,7 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "bin": {
-    "pazzle": "parser.js"
+    "pazzle": "node \"./parser.js\""
   },
   "contributes": {
     "languages": [

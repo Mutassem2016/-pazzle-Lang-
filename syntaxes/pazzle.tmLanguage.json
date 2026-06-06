@@ -1,73 +1,357 @@
 {
-  "scopeName": "source.pazzle",
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Pazzle",
+  "scopeName": "source.pazzle",
+  "fileTypes": ["pazzle"],
   "patterns": [
-
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#numbers"
-    },
-
-    {
-      "include": "#variable-declaration"
-    },
-    {
-      "include": "#constant-declaration"
-    },
-    {
-      "include": "#function-definition"
-    },
-    {
-      "include": "#function-call"
-    },
-    {
-      "include": "#print"
-    },
-    {
-      "include": "#variable-editor"
-    },
-    {
-      "include": "#conditionals"
-    },
-    {
-      "include": "#loops"
-    },
-    {
-      "include": "#match"
-    },
-    {
-      "include": "#regex"
-    },
-    {
-      "include": "#filesystem"
-    },
-    {
-      "include": "#dom"
-    },
-    {
-      "include": "#run"
-    },
-
-    {
-      "include": "#keywords"
-    }
-
+    { "include": "#comments" },
+    { "include": "#block-comments" },
+    { "include": "#keywords-control" },
+    { "include": "#keywords-declaration" },
+    { "include": "#keywords-builtin-term" },
+    { "include": "#keywords-builtin-math" },
+    { "include": "#keywords-builtin-str" },
+    { "include": "#keywords-builtin-arr" },
+    { "include": "#keywords-async" },
+    { "include": "#keywords-run" },
+    { "include": "#keywords-fs" },
+    { "include": "#keywords-dom" },
+    { "include": "#keywords-meta" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#loop-interval" },
+    { "include": "#loop-for" },
+    { "include": "#loop-while" },
+    { "include": "#conditional" },
+    { "include": "#match-statement" },
+    { "include": "#regex-block" },
+    { "include": "#var-editor" },
+    { "include": "#array-ops" },
+    { "include": "#print-statement" },
+    { "include": "#onkey" },
+    { "include": "#runjs" },
+    { "include": "#simple-block" },
+    { "include": "#type-definition" },
+    { "include": "#auto-rerun" },
+    { "include": "#link-statement" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#booleans" },
+    { "include": "#operators" },
+    { "include": "#punctuation" },
+    { "include": "#identifiers" }
   ],
-
   "repository": {
 
     "comments": {
+      "name": "comment.line.pazzle",
+      "match": "^\\s*#.*$"
+    },
+
+    "block-comments": {
+      "name": "comment.block.pazzle",
+      "begin": "---",
+      "end": "---",
+      "beginCaptures": { "0": { "name": "punctuation.definition.comment.pazzle" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.comment.pazzle" } }
+    },
+
+    "keywords-control": {
       "patterns": [
         {
-          "name": "comment.line.pazzle",
-          "match": "#.*$"
+          "name": "keyword.control.flow.pazzle",
+          "match": "\\b(if|else|break|continue|return|end)\\b"
+        },
+        {
+          "name": "keyword.control.match.pazzle",
+          "match": "\\b(match)\\b"
+        },
+        {
+          "name": "keyword.control.default.pazzle",
+          "match": "^\\s*_(?=\\s*\\{)"
         }
       ]
+    },
+
+    "keywords-declaration": {
+      "patterns": [
+        {
+          "name": "storage.type.make.pazzle",
+          "match": "\\bmake\\b"
+        },
+        {
+          "name": "storage.type.const.pazzle",
+          "match": "\\bstop\\b"
+        },
+        {
+          "name": "storage.type.type.pazzle",
+          "match": "\\btype\\b"
+        }
+      ]
+    },
+
+    "keywords-builtin-term": {
+      "patterns": [
+        {
+          "name": "support.function.terminal.pazzle",
+          "match": "\\bterm\\.(cls|home|hide\\.cursor|show\\.cursor|reset|setup\\.keys|exit)\\b"
+        },
+        {
+          "name": "support.function.terminal.pazzle",
+          "match": "\\bterm\\.(move|write|writeln)(?=\\()"
+        }
+      ]
+    },
+
+    "keywords-builtin-math": {
+      "name": "support.function.math.pazzle",
+      "match": "\\bmath\\.(floor|ceil|round|min|max|abs|random|sqrt)(?=\\()"
+    },
+
+    "keywords-builtin-str": {
+      "name": "support.function.string.pazzle",
+      "match": "\\bstr\\.(length|pad|repeat)(?=\\()"
+    },
+
+    "keywords-builtin-arr": {
+      "name": "support.function.array.pazzle",
+      "match": "\\barr\\.(new|fill|every)(?=\\()"
+    },
+
+    "keywords-async": {
+      "patterns": [
+        {
+          "name": "keyword.control.async.pazzle",
+          "match": "^\\s*\\basync\\b"
+        },
+        {
+          "name": "support.function.input.pazzle",
+          "match": "\\bInput(?:\\.area|\\.By\\s+non-string(?:\\.area)?|\\.By\\s+all(?:\\.area)?)?(?=\\(|\\s)"
+        },
+        {
+          "name": "support.function.input.pazzle",
+          "match": "\\bInputs\\b"
+        }
+      ]
+    },
+
+    "keywords-run": {
+      "name": "keyword.control.run.pazzle",
+      "match": "^\\s*\\brun\\b(?=\\s)"
+    },
+
+    "keywords-fs": {
+      "patterns": [
+        {
+          "name": "keyword.other.fs.pazzle",
+          "match": "^\\s*\\bfs\\b\\s*$"
+        },
+        {
+          "name": "support.function.fs.pazzle",
+          "match": "\\b(write|read|append|delete)(?=\\s*\\()"
+        }
+      ]
+    },
+
+    "keywords-dom": {
+      "patterns": [
+        {
+          "name": "support.function.dom.pazzle",
+          "match": "\\bget\\b(?=\\s)"
+        },
+        {
+          "name": "keyword.other.dom.pazzle",
+          "match": "\\bsc\\b"
+        }
+      ]
+    },
+
+    "keywords-meta": {
+      "patterns": [
+        {
+          "name": "keyword.other.meta.pazzle",
+          "match": "\\b(hide|show)\\s+(info|warn|error)\\b"
+        },
+        {
+          "name": "keyword.other.property.pazzle",
+          "match": "\\bAdd\\s+Variable\\s+property\\b"
+        }
+      ]
+    },
+
+    "function-definition": {
+      "name": "meta.function.pazzle",
+      "match": "^\\s*(catch)\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.declaration.function.pazzle" },
+        "2": { "name": "entity.name.function.pazzle" },
+        "3": { "name": "variable.parameter.pazzle" }
+      }
+    },
+
+    "function-call": {
+      "name": "meta.function-call.pazzle",
+      "match": "\\b(call)\\s+([A-Za-z_]\\w*)\\s*\\(",
+      "captures": {
+        "1": { "name": "keyword.control.call.pazzle" },
+        "2": { "name": "entity.name.function.pazzle" }
+      }
+    },
+
+    "loop-interval": {
+      "name": "meta.loop.interval.pazzle",
+      "match": "^\\s*loop_to\\.end\\.time\\(\\{(\\d+(?:\\.\\d+)?)\\}\\[\\{",
+      "captures": {
+        "0": { "name": "keyword.control.loop.pazzle" },
+        "1": { "name": "constant.numeric.pazzle" }
+      }
+    },
+
+    "loop-for": {
+      "name": "meta.loop.for.pazzle",
+      "match": "^\\s*(for)\\s+([A-Za-z_]\\w*)\\s+(from)\\s+(.+?)\\s+(to)\\s+(.+?)(?:\\s+(step)\\s+(.+?))?\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.control.for.pazzle" },
+        "2": { "name": "variable.other.pazzle" },
+        "3": { "name": "keyword.control.from.pazzle" },
+        "5": { "name": "keyword.control.to.pazzle" },
+        "7": { "name": "keyword.control.step.pazzle" }
+      }
+    },
+
+    "loop-while": {
+      "name": "meta.loop.while.pazzle",
+      "match": "^\\s*(while)\\s*\\((.+?)\\)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.control.while.pazzle" },
+        "2": { "name": "meta.embedded.condition.pazzle" }
+      }
+    },
+
+    "conditional": {
+      "name": "meta.conditional.pazzle",
+      "match": "^\\s*(if|\\}\\s*else\\s*if)\\s*\\((.+?)\\)\\s*\\{|^\\s*(\\}\\s*else)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.control.if.pazzle" },
+        "2": { "name": "meta.embedded.condition.pazzle" },
+        "3": { "name": "keyword.control.else.pazzle" }
+      }
+    },
+
+    "match-statement": {
+      "name": "meta.match.pazzle",
+      "match": "^\\s*(match)\\s+([A-Za-z_]\\w*)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.control.match.pazzle" },
+        "2": { "name": "variable.other.pazzle" }
+      }
+    },
+
+    "regex-block": {
+      "name": "meta.regex-block.pazzle",
+      "match": "^\\s*([A-Za-z_]\\w*)\\s*=\\s*(RE)\\((.+?)\\)\\s*(to)\\((.+?)\\)\\s*\\{",
+      "captures": {
+        "1": { "name": "variable.other.pazzle" },
+        "2": { "name": "keyword.other.regex.pazzle" },
+        "3": { "name": "string.regexp.pazzle" },
+        "4": { "name": "keyword.other.to.pazzle" },
+        "5": { "name": "variable.other.pazzle" }
+      }
+    },
+
+    "var-editor": {
+      "patterns": [
+        {
+          "name": "meta.var-editor.pazzle",
+          "match": "^\\s*([A-Za-z_]\\w*(?:\\s*,\\s*[A-Za-z_]\\w*)*)\\s*:\\s*(add|subtract|multiply|divide|mod|power|set|toggle|increment|decrement|To|From|ToHTML|FromHTML|ToValue|FromValue|style|IfEmpty|SetMax|SetMin|clear|push|auto|take)\\s*(?:\\((.*)\\))?",
+          "captures": {
+            "1": { "name": "variable.other.pazzle" },
+            "2": { "name": "support.function.var-editor.pazzle" },
+            "3": { "name": "meta.arguments.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "array-ops": {
+      "name": "meta.array-op.pazzle",
+      "match": "^\\s*([A-Za-z_]\\w*)\\s*:\\s*(push|pop|shift|unshift|reverse|sort|clear|remove|get|set|slice|includes|indexOf|join|length)(?=\\s*\\(|\\s*>>|\\s*$)",
+      "captures": {
+        "1": { "name": "variable.other.pazzle" },
+        "2": { "name": "support.function.array.pazzle" }
+      }
+    },
+
+    "print-statement": {
+      "name": "meta.print.pazzle",
+      "match": "\\blocal\\.txtar\\s*\\(\\s*(print|link|reprint|Up|printUp|down|printDown)\\s*\\((.+?)\\)\\s*\\)",
+      "captures": {
+        "1": { "name": "support.function.print.pazzle" },
+        "2": { "name": "meta.arguments.pazzle" }
+      }
+    },
+
+    "onkey": {
+      "name": "meta.onkey.pazzle",
+      "match": "^\\s*(onKey)\\s*\\(([A-Za-z_]\\w*)\\)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.control.onkey.pazzle" },
+        "2": { "name": "constant.language.keyname.pazzle" }
+      }
+    },
+
+    "runjs": {
+      "name": "meta.runjs.pazzle",
+      "match": "^\\s*(runJS)\\s*:\\s*(.+)$",
+      "captures": {
+        "1": { "name": "keyword.other.runjs.pazzle" },
+        "2": { "name": "source.js.embedded.pazzle" }
+      }
+    },
+
+    "simple-block": {
+      "name": "meta.simple.pazzle",
+      "match": "\\b(New)\\s+(LANG)\\s+(simple)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.other.new.pazzle" },
+        "2": { "name": "keyword.other.lang.pazzle" },
+        "3": { "name": "keyword.other.simple.pazzle" }
+      }
+    },
+
+    "type-definition": {
+      "name": "meta.type.pazzle",
+      "match": "^\\s*(type)\\s+([A-Za-z_]\\w*)\\s*\\{",
+      "captures": {
+        "1": { "name": "keyword.declaration.type.pazzle" },
+        "2": { "name": "entity.name.type.pazzle" }
+      }
+    },
+
+    "auto-rerun": {
+      "patterns": [
+        {
+          "name": "keyword.other.auto.pazzle",
+          "match": "\\bauto:(end|start)\\*\\(\\)"
+        },
+        {
+          "name": "support.function.rerun.pazzle",
+          "match": "\\bapp:rerun\\*\\((.+?)\\)",
+          "captures": {
+            "1": { "name": "string.pazzle" }
+          }
+        }
+      ]
+    },
+
+    "link-statement": {
+      "name": "meta.link.pazzle",
+      "match": "^\\s*(link)\\s+(index|script)\\s+(.+)$",
+      "captures": {
+        "1": { "name": "keyword.other.link.pazzle" },
+        "2": { "name": "constant.language.link-type.pazzle" },
+        "3": { "name": "string.unquoted.path.pazzle" }
+      }
     },
 
     "strings": {
@@ -75,176 +359,101 @@
         {
           "name": "string.quoted.double.pazzle",
           "begin": "\"",
-          "end": "\""
+          "end": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.pazzle" } },
+          "endCaptures":   { "0": { "name": "punctuation.definition.string.end.pazzle" } },
+          "patterns": [
+            { "name": "constant.character.escape.pazzle", "match": "\\\\." }
+          ]
         },
         {
           "name": "string.quoted.single.pazzle",
           "begin": "'",
-          "end": "'"
+          "end": "'",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.pazzle" } },
+          "endCaptures":   { "0": { "name": "punctuation.definition.string.end.pazzle" } },
+          "patterns": [
+            { "name": "constant.character.escape.pazzle", "match": "\\\\." }
+          ]
         }
       ]
     },
 
     "numbers": {
-      "patterns": [
-        {
-          "name": "constant.numeric.pazzle",
-          "match": "\\b\\d+\\b"
-        }
-      ]
+      "name": "constant.numeric.pazzle",
+      "match": "\\b\\d+(?:\\.\\d+)?\\b"
     },
 
-    "keywords": {
-      "patterns": [
-        {
-          "name": "keyword.control.pazzle",
-          "match": "\\b(if|else|for|from|to|step|match|run|fs)\\b"
-        }
-      ]
+    "booleans": {
+      "name": "constant.language.boolean.pazzle",
+      "match": "\\b(true|false|null|undefined|none)\\b"
     },
 
-    "variable-declaration": {
+    "operators": {
       "patterns": [
         {
-          "match": "\\b(make)\\s+([A-Za-z_]\\w*)",
-          "captures": {
-            "1": { "name": "keyword.declaration.variable.pazzle" },
-            "2": { "name": "variable.other.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "constant-declaration": {
-      "patterns": [
-        {
-          "match": "\\b(stop)\\s+([A-Za-z_]\\w*)",
-          "captures": {
-            "1": { "name": "keyword.declaration.constant.pazzle" },
-            "2": { "name": "variable.other.constant.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "function-definition": {
-      "patterns": [
-        {
-          "match": "\\b(catch)\\s+([A-Za-z_]\\w*)",
-          "captures": {
-            "1": { "name": "keyword.declaration.function.pazzle" },
-            "2": { "name": "entity.name.function.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "function-call": {
-      "patterns": [
-        {
-          "match": "\\b(call)\\s+([A-Za-z_]\\w*)",
-          "captures": {
-            "1": { "name": "keyword.control.call.pazzle" },
-            "2": { "name": "entity.name.function.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "print": {
-      "patterns": [
-        {
-          "name": "support.function.print.pazzle",
-          "match": "local\\.My's\\.web\\.txtar"
-        }
-      ]
-    },
-
-    "variable-editor": {
-      "patterns": [
-        {
-          "match": "\\b([A-Za-z_]\\w*)\\s*:\\s*(add|subtract|multiply|divide|mod|power|set|toggle|increment|decrement|To|From|ToHTML|FromHTML|ToValue|FromValue|style|IfEmpty|SetMax|SetMin|take)(?=\\s|\\(|$)",
-          "captures": {
-            "1": { "name": "variable.other.pazzle" },
-            "2": { "name": "keyword.operator.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "conditionals": {
-      "patterns": [
-        {
-          "name": "keyword.control.conditional.pazzle",
-          "match": "\\b(if|else)\\b"
-        }
-      ]
-    },
-
-    "loops": {
-      "patterns": [
-        {
-          "name": "keyword.control.loop.pazzle",
-          "match": "loop_to\\.end\\.time"
+          "name": "keyword.operator.comparison.pazzle",
+          "match": "\\b(equals|not\\s+equals|greater\\s+than|less\\s+than)\\b"
         },
         {
-          "match": "\\bfor\\s+([A-Za-z_]\\w*)",
-          "captures": {
-            "0": { "name": "keyword.control.loop.pazzle" },
-            "1": { "name": "variable.other.loop.pazzle" }
-          }
-        }
-      ]
-    },
-
-    "match": {
-      "patterns": [
-        {
-          "name": "keyword.control.match.pazzle",
-          "match": "\\bmatch\\b"
+          "name": "keyword.operator.pipe.pazzle",
+          "match": ">>"
         },
         {
-          "name": "constant.language.case.pazzle",
-          "match": "\".*?\"(?=\\s*\\{)"
+          "name": "keyword.operator.arithmetic.pazzle",
+          "match": "[+\\-*/%]|\\*\\*"
+        },
+        {
+          "name": "keyword.operator.assignment.pazzle",
+          "match": "(?<![=!<>])=(?!=)"
+        },
+        {
+          "name": "keyword.operator.logical.pazzle",
+          "match": "(&&|\\|\\||!(?!=))"
+        },
+        {
+          "name": "keyword.operator.comparison.js.pazzle",
+          "match": "(===|!==|>=|<=|>(?!>)|<(?!<))"
         }
       ]
     },
 
-    "regex": {
+    "punctuation": {
       "patterns": [
         {
-          "name": "keyword.operator.regex.pazzle",
-          "match": "\\bRE\\("
+          "name": "punctuation.section.block.begin.pazzle",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.pazzle",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.separator.comma.pazzle",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.colon.pazzle",
+          "match": "(?<![A-Za-z0-9_]):"
+        },
+        {
+          "name": "punctuation.section.parens.begin.pazzle",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.pazzle",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.interval-close.pazzle",
+          "match": "\\}\\]"
         }
       ]
     },
 
-    "filesystem": {
-      "patterns": [
-        {
-          "name": "support.function.fs.pazzle",
-          "match": "\\b(read|write)\\s*\\("
-        }
-      ]
-    },
-
-    "dom": {
-      "patterns": [
-        {
-          "name": "support.type.dom.pazzle",
-          "match": "local\\.Make|local\\.web|front-end|loop_to\\.find"
-        }
-      ]
-    },
-
-    "run": {
-      "patterns": [
-        {
-          "name": "keyword.control.run.pazzle",
-          "match": "\\brun\\b"
-        }
-      ]
+    "identifiers": {
+      "name": "variable.other.pazzle",
+      "match": "\\b[A-Za-z_]\\w*\\b"
     }
-
   }
 }

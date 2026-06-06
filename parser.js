@@ -1,17 +1,129 @@
 #!/usr/bin/env node
-// parser.js - Pazzle Parser v14.2 (Bug-Fixed Edition)
+// parser.js - Pazzle Parser v14.4 (Self-Contained Edition)
 const fs = require("fs");
 const path = require("path");
+let qcount = 0;
+let JSONdata = {};
+let JSONsitting = {};
+let EPnum = 0;
 
-// ✅ إصلاح #1 و #2: newInputsInCMD بيتملى الأول صح قبل ما parsePazzle تشتغل
 let newInputsInCMD = [];
-// ✅ إصلاح #4: inComment اتنقل جوه parsePazzle عشان متأثرش على ملفات تانية في watch mode
 
-/* =========================================================================
-   ERROR & WARNING SYSTEM
-   ========================================================================= */
+// =========================================================================
+// TERMINAL BUILT-INS - بيتحولوا مباشرة لـ JS
+// =========================================================================
+const TERMINAL_BUILTINS = {
+  'term.cls':        `process.stdout.write('\x1b[2J\x1b[H');`,
+  'term.home':       `process.stdout.write('\x1b[H');`,
+  'term.hide.cursor':`process.stdout.write('\x1b[?25l');`,
+  'term.show.cursor':`process.stdout.write('\x1b[?25h');`,
+  'term.reset':      `process.stdout.write('\x1b[0m');`,
+  'term.setup.keys': `if(!global.__pazzle_keys){const __rl=require('readline');__rl.emitKeypressEvents(process.stdin);if(process.stdin.isTTY)process.stdin.setRawMode(true);global.__pazzle_keys={};process.stdin.on('keypress',(str,key)=>{if(!key)return;if(key.ctrl&&key.name==='c'){process.stdout.write('\x1b[?25h\x1b[0m');process.exit(0);}global.__pazzle_keys[key.name]=true;setTimeout(()=>{if(global.__pazzle_keys)global.__pazzle_keys[key.name]=false;},80);});}`,
+};
 
-// ✅ إصلاح: بيقسم السطر على أول : وآخر () عشان يتعامل صح مع .trim() و.split() جوه الـ value
+let varTypes = {}
+let Typefunctions = {}
+function parseBuiltinCall(line, state) {
+  let m;
+
+  for (const [key, js] of Object.entries(TERMINAL_BUILTINS)) {
+    if (line === key || line === key + '()') return js;
+  }
+
+  m = line.match(/^term\.move\((.+?),\s*(.+?),\s*(.+)\)$/);
+  if (m) return `process.stdout.write(\`\x1b[\${${m[2]}};\${${m[1]}}H\${${m[3]}}\`);`;
+
+  m = line.match(/^term\.write\((.+)\)$/);
+  if (m) return `process.stdout.write(${m[1]});`;
+
+  m = line.match(/^term\.writeln\((.+)\)$/);
+  if (m) return `process.stdout.write(${m[1]} + '\n');`;
+
+  if (line === 'term.exit()') return `process.stdout.write('\x1b[?25h\x1b[0m'); process.exit(0);`;
+
+  const decl = (v, val) => {
+    if (state.isVariable(v)) return `${v} = ${val};`;
+    state.addVariable(v, 'let');
+    return `let ${v} = ${val};`;
+  };
+
+  m = line.match(/^math\.floor\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `Math.floor(${m[1]})`);
+  m = line.match(/^math\.floor\((.+?)\)$/);
+  if (m) return `Math.floor(${m[1]});`;
+
+  m = line.match(/^math\.ceil\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `Math.ceil(${m[1]})`);
+
+  m = line.match(/^math\.round\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `Math.round(${m[1]})`);
+
+  m = line.match(/^math\.min\((.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[3], `Math.min(${m[1]}, ${m[2]})`);
+  m = line.match(/^math\.min\((.+?),\s*(.+?)\)$/);
+  if (m) return `Math.min(${m[1]}, ${m[2]});`;
+
+  m = line.match(/^math\.max\((.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[3], `Math.max(${m[1]}, ${m[2]})`);
+  m = line.match(/^math\.max\((.+?),\s*(.+?)\)$/);
+  if (m) return `Math.max(${m[1]}, ${m[2]});`;
+
+  m = line.match(/^math\.abs\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `Math.abs(${m[1]})`);
+
+  m = line.match(/^math\.random\(\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[1], `Math.random()`);
+
+  m = line.match(/^math\.sqrt\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `Math.sqrt(${m[1]})`);
+
+  m = line.match(/^str\.length\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `String(${m[1]}).length`);
+
+  m = line.match(/^str\.pad\((.+?),\s*(.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[4], `String(${m[1]}).padStart(${m[2]}, ${m[3]})`);
+
+  m = line.match(/^str\.repeat\((.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[3], `String(${m[1]}).repeat(${m[2]})`);
+
+  m = line.match(/^arr\.new\((.+?),\s*(.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[4], `Array.from({length:${m[2]}},()=>new Array(${m[1]}).fill(${m[3]}))`);
+
+  m = line.match(/^arr\.fill\((.+?),\s*(.+?)\)$/);
+  if (m) return `${m[1]}.fill(${m[2]});`;
+
+  m = line.match(/^arr\.every\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+  if (m) return decl(m[2], `${m[1]}.every(a=>!a)`);
+
+  return null;
+}
+
+let varEditorInputs = {
+      'add': `var += value;`,
+      'subtract': `var -= value;`,
+      'multiply': `var *= value;`,
+      'divide': `var /= value;`,
+      'mod': `var %= value;`,
+      'power': `var **= value;`,
+      'set': `var = value;`,
+      'toggle': `var = !var;`,
+      'increment': `var++;`,
+      'decrement': `var--;`,
+      'To': `value.innerText = var;`,
+      'From': `var = value.innerText;`,
+      'ToHTML': `value.innerHTML = var;`,
+      'FromHTML': `var = value.innerHTML;`,
+      'ToValue': `value.value = var;`,
+      'FromValue': `var = value.value;`,
+      'style': `var.style.value;`,
+      'IfEmpty': `if (var === "" || var === null || var === undefined || var === false || var === 0 || var <= 0) var = value;`,
+      'SetMax': `if (var > value) var = value;`,
+      'clear': `var = [];`,
+      'SetMin': `if (var < value) var = value;`,
+      'push': `var.push(value);`,
+      'auto': `setInterval(() => { var = (function(){ const chars = "abcdefghijklmnopqrstuvwxyz"; return Array.from({length: Math.floor(Math.random()*12)+5}, () => chars[Math.floor(Math.random()*chars.length)]).join(""); })(); }, 10);`
+};
+
 function parseVarEditorLine(line) {
   const colonIdx = line.indexOf(':');
   if (colonIdx === -1) return null;
@@ -27,7 +139,6 @@ function parseVarEditorLine(line) {
 
   const value = rest.substring(parenIdx + 1, lastParen).trim();
 
-  // تأكد إن الـ property كلمة واحدة بس (مش expression)
   if (!/^[A-Za-z_]\w*$/.test(property)) return null;
 
   return { varName: left, property, value };
@@ -41,8 +152,10 @@ function PazzleWarn(lineNo, msg) {
   console.warn(`[Pazzle Warning] (line ${lineNo}) ${msg}`);
 }
 
-function PazzleInfo(msg) {
-  console.log(`[Pazzle Info] ${msg}`);
+function PazzleInfo(msg, file) {
+  if (JSONdata[`${file}info`] !== "hide") {
+    console.log(`[Pazzle Info] ${msg}`);
+  }
 }
 
 /* =========================================================================
@@ -100,7 +213,12 @@ class ParserState {
   }
 
   getOutput() {
-    return this.js.join("\n");
+    const body = this.js.join("\n");
+    if (body.includes("await ")) {
+      const closeRl = `if (global.__pazzle_rl) global.__pazzle_rl.close();`;
+      return `(async () => {\n${body}\n${closeRl}\n})().catch(err => { console.error("[Pazzle Async Error]:", err.message); });`;
+    }
+    return body;
   }
 }
 
@@ -150,9 +268,12 @@ class ExpressionParser {
       else if (c === ")") open--;
     }
     if (open > 0) {
-      PazzleWarn(lineNo, `Expression has ${open} unclosed parenthesis: ${expr}`);
+      PazzleError(lineNo, `Expression has ${open} unclosed parenthesis: ${expr}`);
     }
-    return expr + ")".repeat(Math.max(0, open));
+    if (open < 0) {
+      PazzleError(lineNo, `Expression has ${Math.abs(open)} extra closing parenthesis: ${expr}`);
+    }
+    return expr;
   }
 }
 
@@ -165,7 +286,7 @@ class PrintHandler {
     this.state = state;
   }
 
-  parse(expr, lineNo) {
+  parse(type,expr, lineNo) {
     const exprParser = new ExpressionParser(this.state);
     const e = exprParser.parse(expr, lineNo);
 
@@ -178,8 +299,28 @@ class PrintHandler {
     if (!isString && !isNumber && !isFunctionCall && !isVariable && !isExpression) {
       PazzleError(lineNo, `Cannot print '${e}': Invalid expression`);
     }
-
-    return `__Pazzle_Print__(${e});`;
+    if (type === "print"){
+      return `__Pazzle_Print__(${e});`;
+    }
+    if (type === "link"){
+      return `process.stdout.write(${e});`;
+    }
+    if (type === "reprint"){
+      return `process.stdout.write('\\r' + ${e});`;
+    }
+    if(type === "Up"){
+      return `process.stdout.write('\\x1b[${e}A');`;
+    }
+    if(type === "printUp"){
+      return `process.stdout.write('\\x1b[${e.split(',')[0]}A' + ${e.split(',')[1]});`;
+    }
+    if(type === "down"){
+      return `process.stdout.write('\\x1b[${e}B');`;
+    }
+    if(type === "printDown"){
+      return `process.stdout.write('\\x1b[${e.split(',')[0]}B' + ${e.split(',')[1]});`;
+    }
+    return null;
   }
 }
 
@@ -221,8 +362,8 @@ class RegexHandler {
     p = p.replace(/\(_\)/g, "\\s*");
     p = p.replace(/ /g, "\\s+");
     p = p.replace(/\(dot\)/g, "\\.");
-    p = p.replace(/\|/g, "");
     p = p.replace(/\(\|\)/g, "\\|");
+    p = p.replace(/\|/g, "");
     p = p.replace(/b\(/g, "\\(");
     p = p.replace(/b\)/g, "\\)");
     return p;
@@ -263,42 +404,26 @@ class VariableEditor {
   }
 
   applyOperation(varName, property, value, lineNo) {
-    const operations = {
-      'add': `${varName} += ${value};`,
-      'subtract': `${varName} -= ${value};`,
-      'multiply': `${varName} *= ${value};`,
-      'divide': `${varName} /= ${value};`,
-      'mod': `${varName} %= ${value};`,
-      'power': `${varName} **= ${value};`,
-      'set': `${varName} = ${value};`,
-      'toggle': `${varName} = !${varName};`,
-      'increment': `${varName}++;`,
-      'decrement': `${varName}--;`,
-      'To': `${value}.innerText = ${varName};`,
-      'From': `${varName} = ${value}.innerText;`,
-      'ToHTML': `${value}.innerHTML = ${varName};`,
-      'FromHTML': `${varName} = ${value}.innerHTML;`,
-      'ToValue': `${value}.value = ${varName};`,
-      'FromValue': `${varName} = ${value}.value;`,
-      'style': `${varName}.style.${value};`,
-      'IfEmpty': `if (${varName} === "" || ${varName} === null || ${varName} === undefined || ${varName} === false || ${varName} === 0 || ${varName} <= 0) ${varName} = ${value};`,
-      'SetMax': `if (${varName} > ${value}) ${varName} = ${value};`,
-      'SetMin': `if (${varName} < ${value}) ${varName} = ${value};`,
-      'push':   `${varName}.push(${value});`,
-    };
-
     if (property === 'take') {
       return this.parseTake(varName, value, lineNo);
     }
 
-    if (property in operations) {
-      return operations[property];
-    } else {
-      PazzleError(lineNo, `Unknown property '${property}'`);
+    if (property in Typefunctions) {
+      const typeName = Typefunctions[property];
+      if (varTypes[varName] !== typeName) {
+        PazzleError(lineNo, `Variable '${varName}' is not of type '${typeName}'`);
+      }
+      return `${varName}.${property}(${value});`;
     }
+
+    if (property in varEditorInputs) {
+      return varEditorInputs[property].replace(/var/g, varName).replace(/value/g, value);
+    }
+
+    // Fallback: treat as method call on object (for class instances)
+    return `${varName}.${property}(${value});`;
   }
 
-  // ✅ إصلاح #8: إضافة lineNo وعمل PazzleError بدل ما يرجع null بصمت
   parseTake(varName, value, lineNo) {
     const values = value.split(",").map(v => v.trim());
     if (values.length !== 2) {
@@ -318,12 +443,12 @@ class FunctionParser {
     this.state = state;
   }
 
-  parse(fnName, lines, startIndex) {
+  parse(fnName, lines, startIndex,args) {
     this.state.addFunction(fnName);
     this.state.inFunction = true;
 
     const js = [];
-    js.push(`function ${fnName}(){`);
+    js.push(`function ${fnName}(${args.join(',')}){`);
 
     let depth = 1;
     let i = startIndex + 1;
@@ -379,6 +504,11 @@ class FunctionParser {
     let m = line.match(/^make\s+([A-Za-z_]\w*)\s*=\s*(.+)$/);
     if (m) {
       const [, name, value] = m;
+      const isOwnClass = value.match(/new\s+([A-Za-z_]\w*)\s*\(.+?\)/);
+      if(isOwnClass){
+        const className = isOwnClass[1];
+        varTypes[name] = className;
+      }
       this.state.addVariable(name, 'let');
       return `let ${name} = ${value};`;
     }
@@ -390,9 +520,43 @@ class FunctionParser {
       return `const ${name} = ${value};`;
     }
 
-    m = line.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
+    m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
     if (m) {
-      return printHandler.parse(m[1], lineNo);
+      return printHandler.parse(m[1], m[2], lineNo);
+    }
+
+    m = line.match(/^runJS:\s*(.+)$/);
+    if (m) return m[1].trim();
+
+    const _builtin1 = parseBuiltinCall(line, this.state);
+    if (_builtin1) return _builtin1;
+
+    m = line.match(/^for\s+([A-Za-z_]\w*)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+step\s+(.+?))?\s*\{$/);
+    if (m) {
+      const [, vn, st, en, sp] = m;
+      const step = sp ? sp : '1';
+      return `for(let ${vn}=${st}; ${vn}<${en}; ${vn}+=${step}){`;
+    }
+
+    m = line.match(/^while\((.+?)\)\{$/);
+    if (m) {
+      const parsedC = new ExpressionParser(this.state).parseComparisons(m[1]);
+      return `while(${parsedC}){`;
+    }
+
+    if (line === '}') return '}';
+    if (line === 'break') return 'break;';
+    if (line === 'continue') return 'continue;';
+
+    m = line.match(/^([A-Za-z_]\w*)\s*:\s*(.+)$/);
+    if (m && this.state.isVariable(m[1])) {
+      const op2 = m[2].trim();
+      const isArrOp = /^(push|pop|shift|unshift|reverse|sort|clear|remove|get\(|set\(|slice|includes|indexOf|join|length)/.test(op2);
+      if (isArrOp) {
+        const arrayH2 = new ArrayHandler(this.state);
+        const arrResult2 = arrayH2.parseArrayOp(m[1], op2, lineNo);
+        if (arrResult2) return arrResult2;
+      }
     }
 
     const _ve1 = parseVarEditorLine(line);
@@ -410,14 +574,19 @@ class FunctionParser {
       return `return ${m[1]};`;
     }
 
-    if (line.startsWith("if(")) {
-      return line;
+    m = line.match(/^if\((.+?)\)\{$/);
+    if (m) {
+      const parsedC = new ExpressionParser(this.state).parseComparisons(m[1]);
+      return `if(${parsedC}){`;
     }
 
     m = line.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
     if (m) {
       return `${m[1]}(${m[2]});`;
     }
+
+    m = line.match(/^onKey\(([A-Za-z_]\w*)\)\s*\{$/);
+    if (m) return `if (global.__pazzle_keys && global.__pazzle_keys['${m[1]}']) {`;
 
     return null;
   }
@@ -495,9 +664,15 @@ class ConditionalParser {
     const printHandler = new PrintHandler(this.state);
     const varEditor = new VariableEditor(this.state);
 
-    let m = line.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
+    let m = line.match(/^runJS:\s*(.+)$/);
+    if (m) return m[1].trim();
+
+    const _builtin2 = parseBuiltinCall(line, this.state);
+    if (_builtin2) return _builtin2;
+
+    m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
     if (m) {
-      return printHandler.parse(m[1], lineNo);
+      return printHandler.parse(m[1], m[2], lineNo);
     }
 
     const _ve1 = parseVarEditorLine(line);
@@ -512,6 +687,28 @@ class ConditionalParser {
 
     if (line.startsWith("if(")) {
       return line;
+    }
+
+    m = line.match(/^onKey\(([A-Za-z_]\w*)\)\s*\{$/);
+    if (m) return `if (global.__pazzle_keys && global.__pazzle_keys['${m[1]}']) {`;
+
+    if (line === '}') return '}';
+    if (line === 'break') return 'break;';
+
+    m = line.match(/^([A-Za-z_]\w*)\s*:\s*(.+)$/);
+    if (m && this.state.isVariable(m[1])) {
+      const op = m[2].trim();
+      const isArrayOp = /^(push|pop|shift|unshift|reverse|sort|clear|remove|get\(|set\(|slice|includes|indexOf|join|length)/.test(op);
+      if (isArrayOp) {
+        const arrayH = new ArrayHandler(this.state);
+        const arrRes2 = arrayH.parseArrayOp(m[1], op, lineNo);
+        if (arrRes2) return arrRes2;
+      }
+      const _ve = parseVarEditorLine(m[0]);
+      if (_ve) {
+        const varEditor2 = new VariableEditor(this.state);
+        return varEditor2.parse(_ve.varName, _ve.property, _ve.value, lineNo);
+      }
     }
 
     return null;
@@ -535,6 +732,8 @@ class LoopParser {
     js.push(`setInterval(()=>{`);
 
     let i = startIndex + 1;
+    let closed = false;
+
     while (i < lines.length) {
       const line = lines[i].trim();
 
@@ -545,6 +744,7 @@ class LoopParser {
 
       if (line.includes("}]")) {
         js.push(`}, ${delayMs});`);
+        closed = true;
         break;
       }
 
@@ -558,6 +758,10 @@ class LoopParser {
       }
 
       i++;
+    }
+
+    if (!closed) {
+      PazzleError(startIndex + 1, `Unclosed interval loop — missing '}]' token`);
     }
 
     this.state.inLoop = false;
@@ -608,27 +812,226 @@ class LoopParser {
     const printHandler = new PrintHandler(this.state);
     const varEditor = new VariableEditor(this.state);
 
-    let m = line.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
+    let m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
     if (m) {
-      return printHandler.parse(m[1], lineNo);
+      return printHandler.parse(m[1], m[2], lineNo);
     }
+    const mJS = line.match(/^runJS:\s*(.+)$/);
+    if (mJS) { return mJS[1].trim(); }
+
+    const _builtinL = parseBuiltinCall(line, this.state);
+    if (_builtinL) return _builtinL;
 
     const _ve1 = parseVarEditorLine(line);
     if (_ve1) {
       return varEditor.parse(_ve1.varName, _ve1.property, _ve1.value, lineNo);
     }
 
-    // runJS: بيعدّي JS خام جوه الـ loop
-    const mJS = line.match(/^runJS:\s*(.+)$/);
-    if (mJS) { return mJS[1].trim(); }
+    m = line.match(/^([A-Za-z_]\w*)\s*:\s*(.+)$/);
+    if (m && this.state.isVariable(m[1])) {
+      const op = m[2].trim();
+      const isArrayOp = /^(push|pop|shift|unshift|reverse|sort|clear|remove|get\(|set\(|slice|includes|indexOf|join|length)/.test(op);
+      if (isArrayOp) {
+        const arrayH = new ArrayHandler(this.state);
+        const arrResult = arrayH.parseArrayOp(m[1], op, lineNo);
+        if (arrResult) return arrResult;
+      }
+    }
+
+    m = line.match(/^onKey\(([A-Za-z_]\w*)\)\s*\{$/);
+    if (m) { return `if (global.__pazzle_keys && global.__pazzle_keys['${m[1]}']) {`; }
+
+    m = line.match(/^make\s+([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    if (m) { this.state.addVariable(m[1], 'let'); return `let ${m[1]} = ${m[2]};`; }
+
+    m = line.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
+    if (m) return `${m[1]}(${m[2]});`;
+
+    m = line.match(/^if\((.+?)\)\{$/);
+    if (m) {
+      const parsedC = new ExpressionParser(this.state).parseComparisons(m[1]);
+      return `if(${parsedC}){`;
+    }
+
+    if (line === 'break')    return 'break;';
+    if (line === 'continue') return 'continue;';
+    if (line === '}') return '}';
 
     return null;
   }
 }
 
 /* =========================================================================
+   WHILE LOOP PARSER
+   ========================================================================= */
+
+class WhileParser {
+  constructor(state) { this.state = state; }
+
+  parse(condition, lines, startIndex) {
+    const js = [];
+    const exprParser = new ExpressionParser(this.state);
+    const parsedCond = exprParser.parseComparisons(condition);
+    js.push(`while(${parsedCond}){`);
+    let depth = 1;
+    let i = startIndex + 1;
+    while (i < lines.length && depth > 0) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#')) { i++; continue; }
+      const openCount  = (line.match(/\{/g) || []).length;
+      const closeCount = (line.match(/\}/g) || []).length;
+      depth += openCount - closeCount;
+      if (depth <= 0) { js.push('}'); break; }
+      const parsed = this.parseWhileLine(line, i + 1);
+      if (parsed) {
+        if (Array.isArray(parsed)) js.push(...parsed.map(l => '  ' + l));
+        else js.push('  ' + parsed);
+      } else if (line !== '{') {
+        PazzleWarn(i + 1, `Unrecognized syntax in while: ${line}`);
+      }
+      i++;
+    }
+    return { code: js, endIndex: i };
+  }
+
+  parseWhileLine(line, lineNo) {
+    const printHandler = new PrintHandler(this.state);
+    const varEditor    = new VariableEditor(this.state);
+    let m = line.match(/^make\s+([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    if (m) { this.state.addVariable(m[1], 'let'); return `let ${m[1]} = ${m[2]};`; }
+    m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
+    if (m) return printHandler.parse(m[1], m[2], lineNo);
+    const _builtinW = parseBuiltinCall(line, this.state);
+    if (_builtinW) return _builtinW;
+    const _ve = parseVarEditorLine(line);
+    if (_ve) return varEditor.parse(_ve.varName, _ve.property, _ve.value, lineNo);
+    m = line.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
+    if (m) return `${m[1]}(${m[2]});`;
+    if (line === 'break')    return 'break;';
+    if (line === 'continue') return 'continue;';
+    m = line.match(/^runJS:\s*(.+)$/);
+    if (m) return m[1].trim();
+    m = line.match(/^if\((.+?)\)\{$/);
+    if (m) {
+      const parsedC = new ExpressionParser(this.state).parseComparisons(m[1]);
+      return `if(${parsedC}){`;
+    }
+    return null;
+  }
+}
+
+/* =========================================================================
+   ARRAY HANDLER
+   ========================================================================= */
+
+class ArrayHandler {
+  constructor(state) { this.state = state; }
+
+  declare(name, value) {
+    this.state.addVariable(name, 'let');
+    return `let ${name} = ${value};`;
+  }
+
+  parseArrayOp(varName, op, lineNo) {
+    let m;
+    const sd = (v, val) => {
+      if (this.state.isVariable(v)) return `${v} = ${val};`;
+      this.state.addVariable(v, 'let');
+      return `let ${v} = ${val};`;
+    };
+    m = op.match(/^length\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[1], `${varName}.length`);
+    m = op.match(/^get\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[2], `${varName}[${m[1]}]`);
+    m = op.match(/^set\((.+?),\s*(.+?)\)$/);
+    if (m) return `${varName}[${m[1]}] = ${m[2]};`;
+    m = op.match(/^slice\((.+?),\s*(.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[3], `${varName}.slice(${m[1]}, ${m[2]})`);
+    m = op.match(/^includes\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[2], `${varName}.includes(${m[1]})`);
+    m = op.match(/^indexOf\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[2], `${varName}.indexOf(${m[1]})`);
+    m = op.match(/^join\((.+?)\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[2], `${varName}.join(${m[1]})`);
+    m = op.match(/^remove\((.+?)\)$/);
+    if (m) return `${varName}.splice(${m[1]}, 1);`;
+    m = op.match(/^push\((.+?)\)$/);
+    if (m) return `${varName}.push(${m[1]});`;
+    m = op.match(/^pop\(\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[1], `${varName}.pop()`);
+    if (op === 'pop()') return `${varName}.pop();`;
+    m = op.match(/^shift\(\)\s*>>\s*([A-Za-z_]\w*)$/);
+    if (m) return sd(m[1], `${varName}.shift()`);
+    if (op === 'shift()') return `${varName}.shift();`;
+    m = op.match(/^unshift\((.+?)\)$/);
+    if (m) return `${varName}.unshift(${m[1]});`;
+    if (op === 'reverse()') return `${varName}.reverse();`;
+    if (op === 'sort()')    return `${varName}.sort();`;
+    if (op === 'clear()')   return `${varName} = [];`;
+    return null;
+  }
+}
+
+/* =========================================================================
+   KEY HANDLER (real-time keyboard)
+   ========================================================================= */
+
+class KeyHandler {
+  constructor(state) { this.state = state; this._setup = false; }
+
+  ensureSetup() {
+    if (this._setup) return [];
+    this._setup = true;
+    return [
+      `if (!global.__pazzle_keys) {`,
+      `  const __rl_keys = require('readline');`,
+      `  __rl_keys.emitKeypressEvents(process.stdin);`,
+      `  if (process.stdin.isTTY) process.stdin.setRawMode(true);`,
+      `  global.__pazzle_keys = {};`,
+      `  process.stdin.on('keypress', (str, key) => {`,
+      `    if (!key) return;`,
+      `    if (key.ctrl && key.name === 'c') { process.stdout.write('\\x1b[?25h'); process.exit(0); }`,
+      `    global.__pazzle_keys[key.name] = true;`,
+      `    setTimeout(() => { if(global.__pazzle_keys) global.__pazzle_keys[key.name] = false; }, 80);`,
+      `  });`,
+      `}`,
+    ];
+  }
+
+  parse(keyName, lines, startIndex) {
+    const setup = this.ensureSetup();
+    const js = [...setup];
+    js.push(`if (global.__pazzle_keys && global.__pazzle_keys['${keyName}']) {`);
+    let depth = 1;
+    let i = startIndex + 1;
+    const printHandler = new PrintHandler(this.state);
+    const varEditor    = new VariableEditor(this.state);
+    while (i < lines.length && depth > 0) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#')) { i++; continue; }
+      const openCount  = (line.match(/\{/g) || []).length;
+      const closeCount = (line.match(/\}/g) || []).length;
+      depth += openCount - closeCount;
+      if (depth <= 0) { js.push('}'); break; }
+      const _ve = parseVarEditorLine(line);
+      if (_ve) { const r = varEditor.parse(_ve.varName, _ve.property, _ve.value, i+1); (Array.isArray(r)?r:[r]).forEach(l=>js.push('  '+l)); i++; continue; }
+      let m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
+      if (m) { js.push('  ' + printHandler.parse(m[1], m[2], i+1)); i++; continue; }
+      m = line.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
+      if (m) { js.push(`  ${m[1]}(${m[2]});`); i++; continue; }
+      m = line.match(/^runJS:\s*(.+)$/);
+      if (m) { js.push('  ' + m[1].trim()); i++; continue; }
+      m = line.match(/^make\s+([A-Za-z_]\w*)\s*=\s*(.+)$/);
+      if (m) { this.state.addVariable(m[1],'let'); js.push(`  let ${m[1]} = ${m[2]};`); i++; continue; }
+      PazzleWarn(i+1, `Unrecognized syntax in onKey: ${line}`);
+      i++;
+    }
+    return { code: js, endIndex: i };
+  }
+}
+
+/* =========================================================================
    DOM & HTML PARSER
-   ✅ إصلاح #5: الاسم اتغير من DOMParser لـ PazzleDOMParser
    ========================================================================= */
 
 class PazzleDOMParser {
@@ -675,7 +1078,7 @@ class FileSystemHandler {
   readFile(fileName, varName) {
     let m = varName.match(/('|")(.+?)\1/);
     if (m) { varName = m[2]; }
-    return `const ${varName}inner = fs.readFileSync(${fileName}, "utf8");`;
+    return `const ${varName}inner = fs.readFileSync('${fileName}', "utf8");`;
   }
 
   writeFile(fileName, content) {
@@ -704,14 +1107,14 @@ function parsePazzle(filePath) {
     throw new Error("File must end with .pazzle");
   }
 
-  PazzleInfo(`Parsing ${path.basename(filePath)}...`);
+  const fileBase = path.basename(filePath, '.pazzle');
+  PazzleInfo(`Parsing ${path.basename(filePath)}...`, filePath);
 
   const code = fs.readFileSync(filePath, "utf8");
   const lines = code.split("\n");
 
   const state = new ParserState();
 
-  // ✅ إصلاح #4: inComment بقى local جوه parsePazzle مش global
   let inComment = false;
 
   const exprParser = new ExpressionParser(state);
@@ -721,6 +1124,9 @@ function parsePazzle(filePath) {
   const functionParser = new FunctionParser(state);
   const conditionalParser = new ConditionalParser(state);
   const loopParser = new LoopParser(state);
+  const whileParser = new WhileParser(state);
+  const arrayHandler = new ArrayHandler(state);
+  const keyHandler = new KeyHandler(state);
   const domParser = new PazzleDOMParser(state);
   const fsHandler = new FileSystemHandler(state);
 
@@ -758,6 +1164,11 @@ function parsePazzle(filePath) {
       if (getElem) {
         value = `document.getElementById("${getElem[1]}")`;
       }
+      // تسجيل نوع المتغير إذا كان new ClassName(...)
+      const isOwnClass = value.match(/^new\s+([A-Za-z_]\w*)\s*\(/);
+      if (isOwnClass) {
+        varTypes[name] = isOwnClass[1];
+      }
       state.addVariable(name, 'let');
       state.addJS(`let ${name} = ${value};`);
       matched = true;
@@ -780,9 +1191,9 @@ function parsePazzle(filePath) {
     }
 
     // ===== Function Definition (catch) =====
-    m = line.match(/^catch\s+([A-Za-z_]\w*)\s*\{$/);
+    m = line.match(/^catch\s+([A-Za-z_]\w*)\s*\((.+?)\)\s*\{$/);
     if (m) {
-      const result = functionParser.parse(m[1], lines, i);
+      const result = functionParser.parse(m[1], lines, i, m[2].replaceAll(' ','').split(','));
       result.code.forEach(l => state.addJS(l));
       i = result.endIndex;
       matched = true;
@@ -816,9 +1227,9 @@ function parsePazzle(filePath) {
           break;
         }
 
-        const printMatch = inner.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
+        const printMatch = inner.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
         if (printMatch) {
-          state.addJS(`  ${printHandler.parse(printMatch[1], i + 1)}`);
+          state.addJS(`  ${printHandler.parse(printMatch[1], printMatch[2], i + 1)}`);
         }
 
         i++;
@@ -831,7 +1242,8 @@ function parsePazzle(filePath) {
     // ===== Conditional (if) =====
     m = line.match(/^if\((.+?)\)\{$/);
     if (m) {
-      const result = conditionalParser.parse(m[1], lines, i);
+      const parsedCond = exprParser.parseComparisons(m[1]);
+      const result = conditionalParser.parse(parsedCond, lines, i);
       result.code.forEach(l => state.addJS(l));
       i = result.endIndex;
       matched = true;
@@ -839,7 +1251,7 @@ function parsePazzle(filePath) {
     }
 
     // ===== Loop (interval) =====
-    m = line.match(/^loop_to\.end\.time\(\{(\d+)\}\[\{$/);
+    m = line.match(/^loop_to\.end\.time\(\{(\d+(?:\.\d+)?)\}\[\{$/);
     if (m) {
       const result = loopParser.parseInterval(m[1], lines, i);
       result.code.forEach(l => state.addJS(l));
@@ -859,6 +1271,61 @@ function parsePazzle(filePath) {
       continue;
     }
 
+    // ===== While Loop =====
+    m = line.match(/^while\((.+?)\)\{$/);
+    if (m) {
+      const result = whileParser.parse(m[1], lines, i);
+      result.code.forEach(l => state.addJS(l));
+      i = result.endIndex;
+      matched = true;
+      continue;
+    }
+
+    // ===== Array Declaration: make arr = [] or make arr = [1,2,3] =====
+    m = line.match(/^make\s+([A-Za-z_]\w*)\s*=\s*(\[.*\])$/);
+    if (m) {
+      state.addJS(arrayHandler.declare(m[1], m[2]));
+      matched = true;
+      continue;
+    }
+
+    // ===== Array Operations =====
+    m = line.match(/^([A-Za-z_]\w*)\s*:\s*(.+)$/);
+    if (m && state.isVariable(m[1])) {
+      const op = m[2].trim();
+      const isArrayOp = /^(push|pop|shift|unshift|reverse|sort|clear|remove|get\(|set\(|slice|includes|indexOf|join|length)/.test(op);
+      if (isArrayOp) {
+        const arrRes = arrayHandler.parseArrayOp(m[1], op, lineNo);
+        if (arrRes) { state.addJS(arrRes); matched = true; continue; }
+      }
+    }
+
+    // ===== onKey(keyname) { ... } =====
+    m = line.match(/^onKey\(([A-Za-z_]\w*)\)\s*\{$/);
+    if (m) {
+      const result = keyHandler.parse(m[1], lines, i);
+      result.code.forEach(l => state.addJS(l));
+      i = result.endIndex;
+      matched = true;
+      continue;
+    }
+
+    // ===== Raw JS =====
+    m = line.match(/^runJS:\s*(.+)$/);
+    if (m) {
+      state.addJS(m[1].trim());
+      matched = true;
+      continue;
+    }
+
+    // ===== Built-in functions =====
+    const _builtinMain = parseBuiltinCall(line, state);
+    if (_builtinMain) {
+      state.addJS(_builtinMain);
+      matched = true;
+      continue;
+    }
+
     // ===== Variable Editor =====
     const _ve2 = parseVarEditorLine(line);
     if (_ve2) {
@@ -869,9 +1336,9 @@ function parsePazzle(filePath) {
     }
 
     // ===== Print =====
-    m = line.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
+    m = line.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
     if (m) {
-      state.addJS(printHandler.parse(m[1], lineNo));
+      state.addJS(printHandler.parse(m[1], m[2], lineNo));
       matched = true;
       continue;
     }
@@ -897,12 +1364,11 @@ function parsePazzle(filePath) {
     }
 
     // ===== Read File =====
-    // ✅ إصلاح #6: بقى بيسجل الـ variable في state.variables
     m = line.match(/^read\s*\(\s*(.+?)\s*\)$/);
     if (m) {
       const varName = m[1].replace(/\./g, "_");
       state.addJS(fsHandler.readFile(m[1], varName));
-      state.addVariable(`${varName}inner`, 'const'); // ← إصلاح: تسجيل الـ variable
+      state.addVariable(`${varName}inner`, 'const');
       matched = true;
       continue;
     }
@@ -917,13 +1383,10 @@ function parsePazzle(filePath) {
     }
 
     // ===== Link =====
-    // ✅ إصلاح #5: link بقى بيحصل بعد ما الـ parse يخلص (في نهاية الـ loop)
     m = line.match(/^link\s+(index|script)\s+(.+)$/);
     if (m) {
       const linkType = m[1];
       const linkTarget = m[2].trim();
-
-      // بنحتفظ بالـ link عشان ننفذه بعد الـ parse
       state._pendingLink = { type: linkType, target: linkTarget };
       matched = true;
       continue;
@@ -938,12 +1401,11 @@ function parsePazzle(filePath) {
     }
 
     // ===== Match Statement =====
-    // ✅ إصلاح #7: إضافة دعم لـ default case
     m = line.match(/^match\s+(.+?)\s*\{$/);
     if (m) {
       const varName = m[1].trim();
       if (!state.isVariable(varName)) {
-        PazzleError(lineNo, `Variable '${varName}' not declared for match statement`);
+        PazzleWarn(lineNo, `'${varName}' may not be declared — using in match anyway`);
       }
 
       state.inMatch = true;
@@ -966,8 +1428,7 @@ function parsePazzle(filePath) {
           break;
         }
 
-        // ✅ إصلاح #7: دعم default
-        if (caseLine === "default{" || caseLine === "default {") {
+        if (caseLine === "_{" || caseLine === "_ {") {
           state.addJS(`default:`);
           i++;
           let caseDepth = 1;
@@ -978,12 +1439,20 @@ function parsePazzle(filePath) {
             const closeCount = (innerLine.match(/\}/g) || []).length;
             caseDepth += openCount - closeCount;
             if (caseDepth <= 0) { state.addJS("  break;"); break; }
-            let ma = innerLine.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
-            if (ma) { state.addJS(`  ${printHandler.parse(ma[1], i + 1)}`); i++; continue; }
+            let ma = innerLine.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
+            if (ma) { state.addJS(`  ${printHandler.parse(ma[1], ma[2], i + 1, filePath)}`); i++; continue; }
             const _vei = parseVarEditorLine(innerLine);
             if (_vei) { const res = varEditor.parse(_vei.varName, _vei.property, _vei.value, i + 1); res.forEach(l => state.addJS("  " + l)); i++; continue; }
             ma = innerLine.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
             if (ma) { state.addJS(`  ${ma[1]}(${ma[2]});`); i++; continue; }
+            ma = innerLine.match(/New\s+LANG\s+simple\{/);
+            if (ma) {
+              const sr = parseSimple(lines.join('\n'), i + 2, state);
+              i += sr.i;
+              sr.code.split('\n').forEach(l => state.addJS("  " + l));
+              caseDepth--;
+              continue;
+            }
             i++;
           }
           i++;
@@ -1013,8 +1482,8 @@ function parsePazzle(filePath) {
               break;
             }
 
-            let ma = innerLine.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
-            if (ma) { state.addJS(`  ${printHandler.parse(ma[1], i + 1)}`); i++; continue; }
+            let ma = innerLine.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
+            if (ma) { state.addJS(`  ${printHandler.parse(ma[1], ma[2], i + 1)}`); i++; continue; }
             const _vei = parseVarEditorLine(innerLine);
             if (_vei) { const res = varEditor.parse(_vei.varName, _vei.property, _vei.value, i + 1); res.forEach(l => state.addJS("  " + l)); i++; continue; }
             ma = innerLine.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
@@ -1027,7 +1496,7 @@ function parsePazzle(filePath) {
             if (ma) { const result = conditionalParser.parse(ma[1], lines, i); result.code.forEach(l => state.addJS("  " + l)); i = result.endIndex; continue; }
             ma = innerLine.match(/^for\s+([A-Za-z_]\w*)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+step\s+(.+?))?\s*\{$/);
             if (ma) { const [, vn, st, en, sp] = ma; const result = loopParser.parseFor(vn, st, en, sp, lines, i); result.code.forEach(l => state.addJS("  " + l)); i = result.endIndex; continue; }
-
+            if(innerLine ==="end") break;
             i++;
           }
         } else {
@@ -1040,9 +1509,8 @@ function parsePazzle(filePath) {
       matched = true;
       continue;
     }
-
+     
     // ===== run =====
-    // ✅ إصلاح #3: async واضح إنه مش async حقيقي، بنوضح ده بـ warning
     m = line.match(/^run\s+(.+)$/);
     if (m) {
       const toRun = m[1].replace('\n', ';').split(';');
@@ -1051,8 +1519,8 @@ function parsePazzle(filePath) {
         const cmd = toRun[ri].trim();
         if (!cmd) { ri++; continue; }
 
-        let ma = cmd.match(/^local\.My's\.web\.txtar\s*\(\s*print\((.+?)\)\s*\)$/);
-        if (ma) { state.addJS(printHandler.parse(ma[1], lineNo)); ri++; continue; }
+        let ma = cmd.match(/^local\.txtar\s*\(\s*(print|link|reprint|Up|printUp|down|printDown)\((.+?)\)\s*\)$/);
+        if (ma) { state.addJS(printHandler.parse(ma[1], ma[2], lineNo)); ri++; continue; }
         const _vec = parseVarEditorLine(cmd);
         if (_vec) { const res = varEditor.parse(_vec.varName, _vec.property, _vec.value, lineNo); res.forEach(l => state.addJS(l)); ri++; continue; }
         ma = cmd.match(/^call\s+([A-Za-z_]\w*)\s*\((.*?)\)$/);
@@ -1089,9 +1557,8 @@ function parsePazzle(filePath) {
       matched = true;
       continue;
     }
-
+    
     // ===== async Input =====
-    // ✅ إصلاح #3: تحذير واضح إن async هنا مش async/await حقيقي
     m = line.match(/async\s+(.+?)\s*=\s*(.+)$/);
     if (m) {
       let [, name, value] = m;
@@ -1101,10 +1568,37 @@ function parsePazzle(filePath) {
       let inputCode = "";
       let mValue = value.match(/^Input\((.+?)\)$/);
       if (mValue) {
-        inputCode = newInputsInCMD[Number(mValue[1].trim()) - 1] || '';
+        inputCode = `'${newInputsInCMD[Number(mValue[1].trim()) - 1] || ''}'`;
       }
-
-      state.addJS(`let ${name} = '${inputCode}';`);
+      mValue = value.match(/get\s+json\s+\((.+?)\)/);
+      if (mValue) {
+        inputCode = `JSON.parse(require("fs").readFileSync('${fileBase}.json','utf8')).${mValue[1]}`;
+      }
+      mValue = value.match(/Inputs/);
+      if (mValue) {
+        inputCode = `'${newInputsInCMD.join(" ")}'`;
+      }
+      mValue = value.match(/Input\.area/);
+      if (mValue) {
+        inputCode = `[${newInputsInCMD.join(",").forEach(i => `'${i}'`)}]`;
+      }
+      mValue = value.match(/^Input\s+By\s+non-string\((.+?)\)$/);
+      if (mValue) {
+        inputCode = `${newInputsInCMD[Number(mValue[1].trim()) - 1] || 'none'}`;
+      }
+      mValue = value.match(/Input\s+By\s+non-string\.area/);
+      if (mValue) {
+        inputCode = `[${newInputsInCMD.join(",")}]`;
+      }
+      mValue = value.match(/Input\s+By\s+all\((\d+)\)/);
+      if (mValue) {
+        inputCode = `{ no: ${newInputsInCMD[Number(mValue[1].trim()) - 1] || 'none'}, string: '${newInputsInCMD[Number(mValue[1].trim()) - 1] || ''}'}`;
+      }
+      mValue = value.match(/Input\s+By\s+all\.area\((\d+)\)/);
+      if (mValue) {
+        inputCode = `[${newInputsInCMD.map(i => `{ no: ${i}, string: '${i}' }`).join(",")}]`;
+      }
+      state.addJS(`let ${name} = ${inputCode};`);
       matched = true;
       continue;
     }
@@ -1114,24 +1608,326 @@ function parsePazzle(filePath) {
       continue;
     }
 
+    m = line.match(/New\s+LANG\s+simple\s*\{/);
+    if (m) {
+      let simpleResult = parseSimple(lines.join('\n'), lineNo + 1, state);
+      i += simpleResult.i;
+      let simpleCode = simpleResult.code.split('\n');
+      for (let loop = 0; loop < simpleCode.length; loop++) {
+        state.addJS(simpleCode[loop]);
+      }
+      matched = true;
+      continue;
+    }
+
+    m = line.match(/auto:(end|start)\*\(\)/);
+    if (m) {
+      if (m[1] === 'end') {
+        state.addJS('function weirdVar(){');
+        state.addJS('  const chars = "abcdefghijklmnopqrstuvwxyz";');
+        state.addJS('  const len = Math.floor(Math.random()*12)+5;');
+        state.addJS('  return Array.from({length:len}, () =>');
+        state.addJS('    chars[Math.floor(Math.random()*chars.length)]');
+        state.addJS('  ).join("");');
+        state.addJS('}');
+        state.addJS(`setInterval(() => {`);
+        state.addJS(`  auto = weirdVar();`);
+        state.addJS(`}, 10);`);
+        matched = true;
+        continue;
+      }
+      if (m[1] === 'start') {
+        state.addJS(`let auto = weirdVar();`);
+        matched = true;
+        continue;
+      }
+    }
+
+    m = line.match(/app:rerun\*\((.+?)\)/);
+    if (m) {
+      const targetFile = m[1];
+      const resolvedDir = path.dirname(filePath);
+      state.addJS(`const { exec } = require("child_process");`);
+      state.addJS(`exec('python "${path.resolve(resolvedDir, targetFile)}"', (error, stdout, stderr) => {`);
+      state.addJS(`  if (error) {`);
+      state.addJS(`    console.error(\`[Runtime Error]: \${error.message}\`);`);
+      state.addJS(`    return;`);
+      state.addJS(`  }`);
+      state.addJS(`  if (stderr) {`);
+      state.addJS(`    console.error(\`[Internal Error]: \${stderr}\`);`);
+      state.addJS(`    return;`);
+      state.addJS(`  }`);
+      state.addJS(`  console.log(stdout);`);
+      state.addJS(`});`);
+      matched = true;
+      continue;
+    }
+
+    m = line.match(/^(hide|show)\s+(info|warn|error)$/);
+    if (m) {
+      JSONdata[`${filePath}${m[2]}`] = m[1];
+      matched = true;
+      continue;
+    }
+
+    m = line.match(/^Add\s+Variable\s+property\s+\((\w+),\s*(.+?)\)$/);
+    if (m) {
+      const [_, propName, funcBody] = m;
+      varEditorInputs[propName] = funcBody;
+      matched = true;
+      continue;
+    }
+    
+    // ===== Type Definition =====
+    m = line.match(/^type\s+([A-Za-z_]\w*)\s*\{$/);
+    if (m) {
+      const typeName = m[1];
+      let props = [];
+      let methods = [];
+      let constructorArgs = [];
+      i++;
+
+      while (i < lines.length) {
+        const propLine = lines[i].trim();
+        if (!propLine || propLine.startsWith('#')) { i++; continue; }
+
+        // الـ } المُغلق للـ type (سطر يحتوي فقط على })
+        if (propLine === '}') {
+          i++; // نتخطى الـ }
+          break;
+        }
+
+        // method: name(args) { - يجب الكشف عنه أولاً قبل احتساب depth
+        let propMatch = propLine.match(/^(\w+)\s*\((.*?)\)\s*\{$/);
+        if (propMatch) {
+          const mName = propMatch[1];
+          const mArgs = propMatch[2].split(",").map(s => s.trim()).filter(s => s);
+          const bodyLines = [];
+          i++;
+          let methodDepth = 1;
+          while (i < lines.length && methodDepth > 0) {
+            const innerLine = lines[i].trim();
+            const iOpen  = (innerLine.match(/\{/g) || []).length;
+            const iClose = (innerLine.match(/\}/g) || []).length;
+            methodDepth += iOpen - iClose;
+            if (methodDepth <= 0) { i++; break; }
+            if (innerLine && !innerLine.startsWith("#")) bodyLines.push(innerLine);
+            i++;
+          }
+          methods.push({ name: mName, args: mArgs, body: bodyLines });
+          continue;
+        }
+
+        // property: name = value
+        propMatch = propLine.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/);
+        if (propMatch) {
+          const pName = propMatch[1];
+          const pValue = propMatch[2].trim();
+          if (!pValue.startsWith('"') && !pValue.startsWith("'") && !state.isVariable(pValue) && isNaN(pValue)) {
+            constructorArgs.push(pValue);
+          }
+          props.push({ name: pName, value: pValue });
+          i++;
+          continue;
+        }
+
+        i++;
+      }
+
+      // توليد الكلاس
+      state.addJS(`class ${typeName} {`);
+      state.addJS(`  constructor(${constructorArgs.join(", ")}) {`);
+      props.forEach(p => {
+        state.addJS(`    this.${p.name} = ${p.value};`);
+      });
+      state.addJS(`  }`);
+
+      methods.forEach(method => {
+        state.addJS(`  ${method.name}(${method.args.join(", ")}) {`);
+        props.forEach(p => {
+          state.addJS(`    let ${p.name} = this.${p.name};`);
+        });
+        for (const bodyLine of method.body) {
+          let translated = null;
+          const ve = parseVarEditorLine(bodyLine);
+          if (ve) {
+            const editorRes = varEditor.parse(ve.varName, ve.property, ve.value, i);
+            translated = Array.isArray(editorRes) ? editorRes.join("\n    ") : editorRes;
+          } else if (bodyLine.startsWith("return ")) {
+            translated = bodyLine + ";";
+          } else {
+            translated = functionParser.parseFunctionLine(bodyLine, i);
+          }
+          if (translated) {
+            const lines2 = Array.isArray(translated) ? translated : [translated];
+            lines2.forEach(l => state.addJS(`    ${l}`));
+          } else {
+            PazzleWarn(i, `Unhandled line in method '${method.name}': ${bodyLine}`);
+          }
+        }
+        const hasReturn = method.body.some(l => l.trim().startsWith("return"));
+        if (!hasReturn) {
+          props.forEach(p => {
+            state.addJS(`    this.${p.name} = ${p.name};`);
+          });
+        }
+        state.addJS(`  }`);
+      });
+
+      state.addJS(`}`);
+      matched = true;
+      // i مضبوط بالفعل من داخل الحلقة (يشير للسطر التالي بعد })
+      // الـ for سيعمل i++ فنطرح 1 لنعوض
+      i--;
+      continue;
+    }
+
+
+
+
+
+    m = line.match(/^type\s+([A-Za-z_]\w*)\s+from\s+(.+?)\s*\{$/);
+    if (m) {
+      const typeName = m[1];
+      let props = [];
+      let methods = [];
+      let constructorArgs = [];
+      let parentArgs = [];
+      i++;
+
+      while (i < lines.length) {
+        const propLine = lines[i].trim();
+        if (!propLine || propLine.startsWith('#')) { i++; continue; }
+
+        // الـ } المُغلق للـ type (سطر يحتوي فقط على })
+        if (propLine === '}') {
+          i++; // نتخطى الـ }
+          break;
+        }
+
+        // method: name(args) { - يجب الكشف عنه أولاً قبل احتساب depth
+        let propMatch = propLine.match(/^(\w+)\s*\((.*?)\)\s*\{$/);
+        if (propMatch) {
+          const mName = propMatch[1];
+          const mArgs = propMatch[2].split(",").map(s => s.trim()).filter(s => s);
+          const bodyLines = [];
+          i++;
+          let methodDepth = 1;
+          while (i < lines.length && methodDepth > 0) {
+            const innerLine = lines[i].trim();
+            const iOpen  = (innerLine.match(/\{/g) || []).length;
+            const iClose = (innerLine.match(/\}/g) || []).length;
+            methodDepth += iOpen - iClose;
+            if (methodDepth <= 0) { i++; break; }
+            if (innerLine && !innerLine.startsWith("#")) bodyLines.push(innerLine);
+            i++;
+          }
+          methods.push({ name: mName, args: mArgs, body: bodyLines });
+          continue;
+        }
+        propMatch = propLine.match(/parent\((.*?)\)/);
+        if (propMatch) {
+          parentArgs.push(...propMatch[1].split(",").map(s => s.trim()).filter(s => s));
+        }
+        // property: name = value
+        propMatch = propLine.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/);
+        if (propMatch) {
+          const pName = propMatch[1];
+          const pValue = propMatch[2].trim();
+          if (!pValue.startsWith('"') && !pValue.startsWith("'") && !state.isVariable(pValue) && isNaN(pValue)) {
+            constructorArgs.push(pValue);
+          }
+          props.push({ name: pName, value: pValue });
+          i++;
+          continue;
+        }
+
+        i++;
+      }
+
+      // توليد الكلاس
+      state.addJS(`class ${typeName} extends ${m[2].trim()} {`);
+      state.addJS(`  constructor(${constructorArgs.join(", ")}) {`);
+      state.addJS(`    super(${parentArgs.join(", ")});`);
+      props.forEach(p => {
+        state.addJS(`    this.${p.name} = ${p.value};`);
+      });
+      state.addJS(`  }`);
+
+      methods.forEach(method => {
+        state.addJS(`  ${method.name}(${method.args.join(", ")}) {`);
+        props.forEach(p => {
+          state.addJS(`    let ${p.name} = this.${p.name};`);
+        });
+        for (const bodyLine of method.body) {
+          let translated = null;
+          const ve = parseVarEditorLine(bodyLine);
+          if (ve) {
+            const editorRes = varEditor.parse(ve.varName, ve.property, ve.value, i);
+            translated = Array.isArray(editorRes) ? editorRes.join("\n    ") : editorRes;
+          } else if (bodyLine.startsWith("return ")) {
+            translated = bodyLine + ";";
+          } else {
+            translated = functionParser.parseFunctionLine(bodyLine, i);
+          }
+          if (translated) {
+            const lines2 = Array.isArray(translated) ? translated : [translated];
+            lines2.forEach(l => state.addJS(`    ${l}`));
+          } else {
+            PazzleWarn(i, `Unhandled line in method '${method.name}': ${bodyLine}`);
+          }
+        }
+        const hasReturn = method.body.some(l => l.trim().startsWith("return"));
+        if (!hasReturn) {
+          props.forEach(p => {
+            state.addJS(`    this.${p.name} = ${p.name};`);
+          });
+        }
+        state.addJS(`  }`);
+      });
+
+      state.addJS(`}`);
+      matched = true;
+      // i مضبوط بالفعل من داخل الحلقة (يشير للسطر التالي بعد })
+      // الـ for سيعمل i++ فنطرح 1 لنعوض
+      i--;
+      continue;
+    }
+    
+
     if (!matched) {
       PazzleError(lineNo, `Unknown syntax: ${line}`);
     }
   }
 
-  /* ========= Output Generation ========= */
+  state.addJS('Number.prototype.add = function(value) { return this + value; };');
+  state.addJS('Number.prototype.subtract = function(value) { return this - value; };');
+  state.addJS('Number.prototype.multiply = function(value) { return this * value; };');
+  state.addJS('Number.prototype.divide = function(value) { return this / value; };');
+  state.addJS('Number.prototype.mod = function(value) { return this % value; };');
+  state.addJS('Number.prototype.power = function(value) { return this ** value; };');
+  state.addJS('Number.prototype.set = function(value) { return value; };');
+  state.addJS('Boolean.prototype.toggle = function() { return !this; };');
+  state.addJS('Number.prototype.increment = function() { return this + 1; };');
+  state.addJS('Number.prototype.decrement = function() { return this - 1; };');
+  state.addJS('String.prototype.add = function(value) { return this + value; };');
+  state.addJS('String.prototype.set = function(value) { return value; };');
+  state.addJS('Number.prototype.IfEmpty = function(value) { if (this === "" || this === null || this === undefined || this === false || this === 0 || this <= 0) { return value; } else { return this; } };');
+  state.addJS('Number.prototype.SetMax = function(value) { if (this > value) { return value; } else { return this; } };');
+  state.addJS('Number.prototype.SetMin = function(value) { if (this < value) { return value; } else { return this; } };');
 
-  const outFile = path.basename(filePath, ".pazzle") + ".js";
+  /* ========= Output Generation ========= */
+  
+  const outFile = fileBase + ".js";
   const outputPath = path.resolve(path.dirname(filePath), outFile);
 
   fs.writeFileSync(outputPath, state.getOutput(), "utf8");
-  PazzleInfo(`✔ Generated: ${outFile}`);
+  PazzleInfo(`✔ Generated: ${outFile}`, filePath);
 
-  // ✅ إصلاح #5: link بيتنفذ بعد ما الـ parse يخلص والـ JS يكون كامل
   if (state._pendingLink) {
     const { type, target } = state._pendingLink;
     if (type === "index") {
-      PazzleInfo(`Linking to ${target}...`);
+      PazzleInfo(`Linking to ${target}...`, filePath);
       try {
         const fileContent = fs.readFileSync(target, "utf8");
         const fileLines = fileContent.split("\n");
@@ -1144,7 +1940,7 @@ function parsePazzle(filePath) {
           const jsCode = state.js.join("\n");
           const newContent = before + "\n<script>\n" + jsCode + "\n</script>\n" + after;
           fs.writeFileSync(target, newContent, "utf8");
-          PazzleInfo(`✔ Linked successfully to ${target}`);
+          PazzleInfo(`✔ Linked successfully to ${target}`, filePath);
         } else {
           PazzleWarn(0, `Could not find <script> tags in ${target}`);
         }
@@ -1156,18 +1952,18 @@ function parsePazzle(filePath) {
 
   /* ========= Execution ========= */
 
-  const { exec } = require("child_process");
+  const { spawn } = require("child_process");
 
-  exec(`node "${outputPath}"`, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`[Runtime Error]: ${error.message}`);
-      return;
+  const child = spawn("node", [outputPath], { stdio: "inherit" });
+
+  child.on("error", (err) => {
+    console.error(`[Runtime Error]: ${err.message}`);
+  });
+
+  child.on("exit", (code) => {
+    if (code !== 0 && code !== null) {
+      console.error(`[Pazzle] Process exited with code ${code}`);
     }
-    if (stderr) {
-      console.error(`[Internal Error]: ${stderr}`);
-      return;
-    }
-    console.log(stdout);
   });
 }
 
@@ -1178,7 +1974,7 @@ function parsePazzle(filePath) {
 function printHelp() {
   console.log(`
 ╔════════════════════════════════════════════════════════════════╗
-║            🧩 Pazzle Parser v14.2 (Bug-Fixed Edition)         ║
+║            🧩 Pazzle Parser v14.4 (Self-Contained Edition)    ║
 ╚════════════════════════════════════════════════════════════════╝
 
 Usage:
@@ -1197,13 +1993,33 @@ Features:
   ✓ Functions
   ✓ Regular Expressions
   ✓ Conditionals (if/else)
-  ✓ Loops (interval, for)
+  ✓ Loops (interval, for, while)
   ✓ File System Operations
   ✓ DOM Manipulation
   ✓ Variable Editing
   ✓ Print System
   ✓ Match Statements (with default case)
+  ✓ Types (classes)
   `);
+}
+
+class parseSimpleClass {
+  color(line) {
+    let m = line.match(/(.+?)\s*\(\s*(.+?)\s*\)/);
+    if (!m) return null;
+
+    let id = "";
+    switch (m[1].trim()) {
+      case "red":    id = "31"; break;
+      case "green":  id = "32"; break;
+      case "yellow": id = "33"; break;
+      case "blue":   id = "34"; break;
+      case "purple": id = "35"; break;
+      case "cyan":   id = "36"; break;
+      default:       id = "0";
+    }
+    return `console.log("\\x1b[${id}m${m[2]}\\x1b[0m")`;
+  }
 }
 
 function startCompilation() {
@@ -1214,7 +2030,6 @@ function startCompilation() {
     process.exit(0);
   }
 
-  // ✅ إصلاح #1 و #2: newInputsInCMD بيتملى الأول وبشكل صح
   newInputsInCMD = [];
   for (let i = 3; i < process.argv.length; i++) {
     newInputsInCMD.push(process.argv[i]);
@@ -1240,7 +2055,7 @@ function startCompilation() {
   };
 
   if (isWatch) {
-    PazzleInfo("👀 Pazzle is watching for changes...");
+    PazzleInfo("👀 Pazzle is watching for changes...", '');
 
     fs.watch(process.cwd(), (eventType, filename) => {
       if (filename && filename.endsWith(".pazzle")) {
@@ -1281,11 +2096,119 @@ function has(str, substr) {
 }
 
 function getLineHas(joinedArea, substr) {
-  const lines = joinedArea.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].includes(substr)) {
       return i;
     }
   }
   return -1;
+}
+
+function parseSimple(code, lineNo, state) {
+  let depth = 1;
+  EPnum++;
+  let codeTwo = code.split('\n');
+  let i = -1;
+  let endLine = 0;
+  let result = [];
+
+  while (i < codeTwo.length) {
+    if (lineNo + i >= codeTwo.length) break;
+
+    let line = codeTwo[lineNo + i].trim();
+
+    if (!line || line.startsWith('#')) {
+      i++;
+      continue;
+    }
+
+    if (line.includes("{")) depth++;
+    if (line.includes("}")) {
+      depth--;
+      if (depth === 0) {
+        endLine = i;
+        break;
+      }
+    }
+
+    if (line.startsWith('"') && line.endsWith('"')) {
+      let mtwo = line.match(/"(.+?)"/);
+      result.push(`console.log("${mtwo[1]}")`);
+      i++;
+      continue;
+    }
+
+    if (line.startsWith("'") && line.endsWith("'")) {
+      let mtwo = line.match(/'(.+?)'/);
+      result.push(`console.log('${mtwo[1]}')`);
+      i++;
+      continue;
+    }
+
+    let m = line.match(/(.+?)\s+share\s+in\s+(.+)/);
+    if (m) {
+      let mtwo = m[2].trim().match(/show\s+Input\((.*)?\)/);
+      if (mtwo) {
+        const prompt = mtwo[1] ? mtwo[1] : '';
+        const varName = m[1].trim();
+        if (state) state.addVariable(varName, 'let');
+
+        if (qcount === 0) {
+          result.push(
+            `if (!global.__pazzle_rl) {\n` +
+            `  const __rl_mod = require('readline');\n` +
+            `  global.__pazzle_rl = __rl_mod.createInterface({ input: process.stdin, output: null, terminal: false });\n` +
+            `  global.__pazzle_queue = [];\n` +
+            `  global.__pazzle_lines = [];\n` +
+            `  global.__pazzle_rl.on('line', (l) => {\n` +
+            `    if (global.__pazzle_queue.length > 0) {\n` +
+            `      global.__pazzle_queue.shift()(l);\n` +
+            `    } else {\n` +
+            `      global.__pazzle_lines.push(l);\n` +
+            `    }\n` +
+            `  });\n` +
+            `}\n` +
+            `function __pazzleAsk(prompt) {\n` +
+            `  return new Promise((resolve) => {\n` +
+            `    if (global.__pazzle_lines.length > 0) {\n` +
+            `      resolve(global.__pazzle_lines.shift());\n` +
+            `    } else {\n` +
+            `      if (prompt) process.stdout.write(prompt);\n` +
+            `      global.__pazzle_queue.push(resolve);\n` +
+            `    }\n` +
+            `  });\n` +
+            `}`
+          );
+        }
+        qcount++;
+        result.push(`let ${varName} = await __pazzleAsk(${JSON.stringify(prompt)});`);
+        i++;
+        continue;
+      }
+      if (state) state.addVariable(m[1].trim(), 'let');
+      result.push(`jsonArea['${m[1]}'] = ${m[2]}`);
+      i++;
+      continue;
+    }
+
+    m = line.match(/(.+?)\s*=\s*(.+)/);
+    if (m) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    m = line.match(/(.+?)\s*\(\s*(.+?)\s*\)/);
+    if (m) {
+      const classS = new parseSimpleClass();
+      const colored = classS.color(line);
+      if (colored) result.push(colored);
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return { i: endLine + 1, code: result.join('\n') };
 }
