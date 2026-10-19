@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// parser.js - Pazzle Parser v14.4 (Self-Contained Edition)
+// parser.js - Pazzle Parser v15.7 (Self-Contained Edition)
 const fs = require("fs");
 const path = require("path");
 let qcount = 0;
 let JSONdata = {};
 let JSONsitting = {};
 let EPnum = 0;
-
+let verision = 15.7;
+let INFO = true;
+let WARNING = true;
 let newInputsInCMD = [];
 
 // =========================================================================
@@ -149,11 +151,13 @@ function PazzleError(line, msg) {
 }
 
 function PazzleWarn(lineNo, msg) {
-  console.warn(`[Pazzle Warning] (line ${lineNo}) ${msg}`);
+  if (WARNING) {
+    console.warn(`[Pazzle Warning] (line ${lineNo}) ${msg}`);
+  }
 }
 
 function PazzleInfo(msg, file) {
-  if (JSONdata[`${file}info`] !== "hide") {
+  if (INFO){
     console.log(`[Pazzle Info] ${msg}`);
   }
 }
@@ -584,7 +588,15 @@ class FunctionParser {
     if (m) {
       return `${m[1]}(${m[2]});`;
     }
-
+    m = line.match(/^New\s+LANG\s+simple\s*{(.+?)}$/);
+    if (m) {
+      PazzleInfo(`Parsing inline simple block at line ${lineNo}`);
+      let simpleResult = parseSimple(m[1].split(';').join('\n'), lineNo + 1, this.state);
+      PazzleInfo(simpleResult.code);
+      let simpleCode = simpleResult.code.split('\n');
+      PazzleInfo(simpleCode);
+      return simpleCode.join('\n');
+    }
     m = line.match(/^onKey\(([A-Za-z_]\w*)\)\s*\{$/);
     if (m) return `if (global.__pazzle_keys && global.__pazzle_keys['${m[1]}']) {`;
 
@@ -1108,10 +1120,18 @@ function parsePazzle(filePath) {
   }
 
   const fileBase = path.basename(filePath, '.pazzle');
-  PazzleInfo(`Parsing ${path.basename(filePath)}...`, filePath);
-
+  //PazzleInfo(`Parsing ${path.basename(filePath)}...`, filePath);
+  try {
+    //PazzleInfo(path.join(filePath.replaceAll(`${fileBase}.pazzle`, ""), "set.json"));
+    const setting = JSON.parse(fs.readFileSync(path.join(filePath.replaceAll(`${fileBase}.pazzle`, ""), "set.json"), "utf8"));
+    //PazzleInfo(setting);
+    INFO = setting["info"];
+    WARNING = setting["warnings"];
+    PazzleInfo(`Pazzle version: ${setting["version"]}`, filePath);
+    verision = setting["version"];
+  }catch(e){}
   const code = fs.readFileSync(filePath, "utf8");
-  const lines = code.split("\n");
+  let lines = code.split("\n");
 
   const state = new ParserState();
 
@@ -1677,7 +1697,49 @@ function parsePazzle(filePath) {
       matched = true;
       continue;
     }
-    
+    m = line.match(/^include\s+([A-Za-z_]\w*)$/);
+
+if (m) {
+    if (verision >= 16) {
+        const includeFile = m[1];
+
+        const includePath = path.resolve(
+            path.dirname(filePath),
+            `${includeFile}.pazzle`
+        );
+
+        if (!fs.existsSync(includePath)) {
+            PazzleError(lineNo, `Include file not found: ${includePath}`);
+            matched = true;
+            continue;
+        }
+
+        const normalizedIncludePath = path.resolve(includePath);
+
+        if (normalizedIncludePath === path.resolve(filePath)) {
+            PazzleError(lineNo, `Circular include detected: ${includeFile}`);
+            matched = true;
+            continue;
+        }
+
+        const includeCode = fs.readFileSync(includePath, 'utf8');
+
+        const part1OfCode = lines.slice(0, i).join('\n');
+        const part2OfCode = lines.slice(i + 1).join('\n');
+
+        lines = `${part1OfCode}\n${includeCode}\n${part2OfCode}`.split('\n');
+
+        i--;
+    } else {
+        PazzleError(
+            lineNo,
+            `Include feature requires Node.js v16 or higher. Current version: ${verision}`
+        );
+    }
+
+    matched = true;
+    continue;
+}
     // ===== Type Definition =====
     m = line.match(/^type\s+([A-Za-z_]\w*)\s*\{$/);
     if (m) {
@@ -1974,7 +2036,7 @@ function parsePazzle(filePath) {
 function printHelp() {
   console.log(`
 ╔════════════════════════════════════════════════════════════════╗
-║            🧩 Pazzle Parser v14.4 (Self-Contained Edition)    ║
+║            🧩 Pazzle Parser v${verision} (Self-Contained Edition)    ║
 ╚════════════════════════════════════════════════════════════════╝
 
 Usage:
@@ -1982,6 +2044,8 @@ Usage:
   pazzle .                  Compile all .pazzle files in current directory
   pazzle -w                 Watch mode (auto-recompile on change)
   pazzle --help             Show this help message
+  pazzle -v                 Show version information
+  pazzle -comma change -v {v} Change the version number
 
 Examples:
   pazzle code.pazzle        Run code.pazzle
@@ -2008,19 +2072,24 @@ class parseSimpleClass {
     let m = line.match(/(.+?)\s*\(\s*(.+?)\s*\)/);
     if (!m) return null;
 
-    let id = "";
-    switch (m[1].trim()) {
-      case "red":    id = "31"; break;
-      case "green":  id = "32"; break;
-      case "yellow": id = "33"; break;
-      case "blue":   id = "34"; break;
-      case "purple": id = "35"; break;
-      case "cyan":   id = "36"; break;
-      default:       id = "0";
-    }
-    return `console.log("\\x1b[${id}m${m[2]}\\x1b[0m")`;
+    const colors = {
+      red: "31",
+      green: "32",
+      yellow: "33",
+      blue: "34",
+      purple: "35",
+      cyan: "36"
+    };
+
+    let id = colors[m[1].trim()] ?? "0";
+
+    let textMatch = m[2].match(/('|")(.+?)\1/);
+    if (!textMatch) return null;
+
+    return `console.log("\\x1b[${id}m${textMatch[2]}\\x1b[0m")`;
   }
 }
+
 
 function startCompilation() {
   const target = process.argv[2];
@@ -2029,7 +2098,17 @@ function startCompilation() {
     printHelp();
     process.exit(0);
   }
-
+  if (target === "-v" || target === "--version") {
+    console.log(`Pazzle Parser v${verision}`);
+    console.log("Enter '-comma change -v {number of version}' to change the version number.");
+  }
+  if(target === "-comma"){
+    if(process.argv[3] === "change"){
+      if(process.argv[4] === "-v"){
+        verision = Number(process.argv[5]);
+      }
+    }
+  }
   newInputsInCMD = [];
   for (let i = 3; i < process.argv.length; i++) {
     newInputsInCMD.push(process.argv[i]);
@@ -2076,7 +2155,7 @@ function startCompilation() {
       try {
         parsePazzle(fullPath);
       } catch (err) {
-        console.error(`Error: ${err.message}`);
+        console.error(err);
       }
     } else {
       console.error(`❌ Error: File not found -> ${target}`);
